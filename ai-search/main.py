@@ -22,7 +22,6 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://740750457-atari-embeds.googleusercontent.com", 
         "https://sites.google.com"
     ],
     allow_credentials=True,
