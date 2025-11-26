@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
@@ -17,26 +18,31 @@ load_dotenv()
 
 app = FastAPI()
 
-# 3. Security: CORS
-# Restricts access to your specific Google Site
+# 3. Security: CORS (Restricted)
+# This Regex allows your published site AND the Google Preview mode,
+# but blocks requests from other websites.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://sites.google.com"
-    ],
+    allow_origin_regex=r"https://(sites\.google\.com|.*\.googleusercontent\.com)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 4. Client Setup
+# 4. Root Endpoint (Hides Error Details)
+# If someone accidentally visits the main URL, they see this simple message
+# instead of a 404 or technical error.
+@app.get("/", response_class=PlainTextResponse)
+def root():
+    return "Google Site Backend Service: Active."
+
+# 5. Client Setup
 api_key = os.getenv("GEMINI_API_KEY")
 client = None
 if api_key:
     client = genai.Client(api_key=api_key)
 
 # --- THE SELF-HEALING UPLOAD SYSTEM ---
-# This variable acts as the server's memory of the file location
 CACHED_FILE_URI = None
 
 def get_or_upload_file():
@@ -89,7 +95,7 @@ def get_or_upload_file():
 # Run once on startup to "warm up" the server
 get_or_upload_file()
 
-# 5. Define Input Model
+# 6. Define Input Model
 class SearchQuery(BaseModel):
     question: str
 
@@ -102,7 +108,7 @@ def search_documents(query: SearchQuery):
     file_uri = get_or_upload_file()
     
     if not file_uri:
-         raise HTTPException(status_code=503, detail="Document unavailable. Check server logs.")
+         raise HTTPException(status_code=503, detail="Document unavailable.")
 
     try:
         system_instruction = (
@@ -122,4 +128,5 @@ def search_documents(query: SearchQuery):
 
     except Exception as e:
         logger.error(f"Generation error: {str(e)}")
+        # We return a generic error to the frontend so we don't leak details
         raise HTTPException(status_code=500, detail="Internal error.")
